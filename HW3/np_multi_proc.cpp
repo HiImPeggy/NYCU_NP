@@ -45,7 +45,6 @@ public:
     bool UserPipe_rvc = false;
     bool UserPipe_send = false;
     bool IsRedir = false;
-    bool append = false;
     void clear();
     void print();
 };
@@ -64,7 +63,6 @@ void cmd::clear() {
     this->IsRedir = false;
     this->UserPipe_rvc = false;
     this->UserPipe_send = false;
-    this->append = false;
 }
 
 void cmd::print() { 
@@ -362,13 +360,6 @@ void create_cmdlist() {
             }
             tmp.IsRedir = true;
         }
-        else if (word[0] == '>' && word[1] == '>' && word.size()>1) {
-            tmp.append = true;
-            tmp.UserPipe_send = true;
-            tmp.send_to = stoi(word.substr(2));  
-            cmdlist.push_back(tmp);
-            tmp.clear();
-        }
         else if ( word[0] == '<' && word.size()>1){
             if(tmp.command.empty() && check_userpipes(1,stoi(word.substr(1))))    continue;
             tmp.UserPipe_rvc = true;
@@ -376,7 +367,6 @@ void create_cmdlist() {
             cmdlist.push_back(tmp);
             tmp.clear();
         }
-        
         else if ( word[0] == '>' && word.size()>1){
             if(tmp.command.empty() && check_userpipes(0,stoi(word.substr(1))))   continue;
             tmp.UserPipe_send = true;
@@ -477,18 +467,15 @@ void process_commands(UserInfo *user, const string &input, unordered_map<int, ar
                 }
                 
                 //cout << file << endl;
-                if (faccessat(AT_FDCWD, file.c_str(), W_OK, 0) == 0 && !currentcmd.append) { // user pipe already exists
+                if (faccessat(AT_FDCWD, file.c_str(), W_OK, 0) == 0) { // user pipe already exists
                     prev_pipe[1] = fd_null;
                     cout << "*** Error: the pipe #" + to_string(user->user_id) + "->#" + to_string(currentcmd.send_to) + " already exists. ***\n";
                 } 
                 else {
                     //cout << file << endl;
                     
-                    /*demo: implement case ">>n", using same pipe to store data without generating pipe already exists*/
-                    if(!currentcmd.append){
-                        if (mkfifoat(AT_FDCWD, file.c_str(),0660)< 0 ) {
-                            perror("mkfifo failed");
-                        }
+                    if (mkfifoat(AT_FDCWD, file.c_str(),0660)< 0) {
+                        perror("mkfifo failed");
                     }
                    
                     userList[currentcmd.send_to].receive_from = user->user_id;
