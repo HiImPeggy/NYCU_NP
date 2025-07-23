@@ -37,6 +37,7 @@ public:
     bool UserPipe_rvc = false;
     bool UserPipe_send = false;
     bool IsRedir = false;
+    bool append = false;
     void clear();
     void print();
 };
@@ -55,6 +56,7 @@ void cmd::clear() {
     this->IsRedir = false;
     this->UserPipe_rvc = false;
     this->UserPipe_send = false;
+    this->append = false;
 }
 
 void cmd::print() { 
@@ -286,6 +288,12 @@ void create_cmdlist() {
             }
             tmp.IsRedir = true;
         }
+        else if (word[0] == '>' && word[1] == '>' && word.size()>1) { /* handle case : >>n */
+            tmp.UserPipe_send = true;
+            tmp.send_to = stoi(word.substr(2));  
+            cmdlist.push_back(tmp);
+            tmp.clear();
+        }
         else if ( word[0] == '<' && word.size()>1){
             if(tmp.command.empty() && check_userpipes(1,stoi(word.substr(1))))    continue;
             tmp.UserPipe_rvc = true;
@@ -347,10 +355,10 @@ int getUserIndex(int fd) {
 
 void process_commands(UserInfo *user, const string &input) {
     int prev_pipe[2] = {user->fd, user->fd}; // Track previous pipe for regular pipes
-
+    cout << cmdlist.size();
     for (int i = 0; i < cmdlist.size(); i++) {
         cmd &currentcmd = cmdlist[i];
-
+        currentcmd.print();
         int pipeNum = 0;
         if (currentcmd.UserPipe_rvc ) {
             //cout << "receive" << endl;
@@ -389,11 +397,18 @@ void process_commands(UserInfo *user, const string &input) {
                 //continue;
             } 
             else {
+                /* implement >>n to same pipe, without generating "the pipe has existed" */
                 pair<int, int> key = {currentcmd.send_to, user->user_id}; // {to_id, from_id}
                 if (UserPipe.count(key)) {
-                    string msg = "*** Error: the pipe #" + to_string(user->user_id) + "->#" + to_string(currentcmd.send_to) + " already exists. ***\n";
-                    write(user->fd, msg.c_str(), msg.size());
-                    prev_pipe[1] = fd_null;
+                    if(currentcmd.append){
+                        //cout << "append" << endl;
+                        //continue;
+                    }
+                    else{
+                        string msg = "*** Error: the pipe #" + to_string(user->user_id) + "->#" + to_string(currentcmd.send_to) + " already exists. ***\n";
+                        write(user->fd, msg.c_str(), msg.size());
+                        prev_pipe[1] = fd_null;
+                    }
                     //cout << "hi" << endl;
                     //continue;
                 } 
@@ -465,11 +480,12 @@ void process_commands(UserInfo *user, const string &input) {
                     }
                     close(user->pipeMap[pipeNum][1]);
                 }
-                else if (currentcmd.UserPipe_send){
+                else if (currentcmd.UserPipe_send ){
+                    //cout << "send" << endl;
                     pair<int, int> key = {currentcmd.send_to, user->user_id};
                     dup2(UserPipe[key][1], STDOUT_FILENO);
                     dup2(UserPipe[key][1], STDERR_FILENO);
-                    close(UserPipe[key][1]);
+                    //close(UserPipe[key][1]);
                 }
             }
             
@@ -488,10 +504,12 @@ void process_commands(UserInfo *user, const string &input) {
             cerr << "Unknown command: [" << args[0] << "]." << endl;
             exit(1);
         } else { // Parent process
-            if (prev_pipe[1] != user->fd && prev_pipe[1] != fd_null) { 
+            if (prev_pipe[1] != user->fd && prev_pipe[1] != fd_null ) { 
                 //cout << "close" << endl;
-                close(prev_pipe[0]);
-                close(prev_pipe[1]);
+                if(!currentcmd.append){
+                    close(prev_pipe[0]);
+                    close(prev_pipe[1]);
+                }
                 prev_pipe[0] = user->fd;
                 prev_pipe[1] = user->fd;
             }
